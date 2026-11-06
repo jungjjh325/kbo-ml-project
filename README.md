@@ -48,5 +48,7 @@ python run_all.py      # output/ CSV 와 web/data.js 생성
 
 ## 데이터 출처
 
-- KBO 공식 홈페이지(https://www.koreabaseball.com) 기록을 수집한 [PsyproLEE/KBO_statics](https://github.com/PsyproLEE/KBO_statics)의 JSON을 CSV로 변환해 사용
-- 생년(kbo_people.csv)은 팀에서 준비한 파일
+| 파일 | 출처 |
+|---|---|
+| `kbo_hitters_season_1982_2026.csv`, `kbo_pitchers_season_1982_2026.csv` | KBO 공식 홈페이지(https://www.koreabaseball.com) 기록을 수집한 [PsyproLEE/KBO_statics](https://github.com/PsyproLEE/KBO_statics)의 JSON을 팀이 CSV로 변환 (2026은 2026-11-04 갱신본) |
+| `kbo_people.csv` (생년) | [nk-datasets](https://pypi.org/project/nk-datasets/) v0.1.1 의 `kbo_people.csv` 그대로 (MIT License) |
