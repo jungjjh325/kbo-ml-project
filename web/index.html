@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KBO 2026 예측 조회</title>
+<style>
+  :root {
+    --bg: #f4f6f4; --card: #ffffff; --text: #1a1f1c; --muted: #66706a; --line: #d8dfda;
+    --main: #1b7a4b; --soft: #e3f1e8; --act: #b36b00; --good: #d6efdf; --bad: #f6dcd8; --red: #b3372b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101613; --card: #18211c; --text: #e6ece8; --muted: #9aa8a0; --line: #2c3a32;
+      --main: #4fc78c; --soft: #1d3327; --act: #e0a33a; --good: #1e4630; --bad: #4a2622; --red: #ef7d70;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 20px 16px 40px; background: var(--bg); color: var(--text);
+         font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; font-size: 15px; }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  h1 { margin: 0 0 6px; font-size: 28px; }
+  .sub { color: var(--muted); margin: 0 0 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  button { font: inherit; cursor: pointer; padding: 7px 12px; border: 1px solid var(--line); border-radius: 6px;
+           background: var(--card); color: var(--text); }
+  button.on { background: var(--main); color: #fff; border-color: var(--main); }
+  .tabs button { margin-right: 4px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .search { position: relative; flex: 1; min-width: 180px; }
+  .search input { width: 100%; font: inherit; font-size: 17px; padding: 10px; border: 1px solid var(--line);
+                  border-radius: 6px; background: var(--bg); color: var(--text); }
+  #list { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; margin: 2px 0 0; padding: 0; list-style: none;
+          background: var(--card); border: 1px solid var(--line); border-radius: 6px; max-height: 300px; overflow-y: auto; display: none; }
+  #list li { padding: 8px 10px; cursor: pointer; display: flex; justify-content: space-between; }
+  #list li:hover { background: var(--soft); }
+  #list small { color: var(--muted); }
+  h2 { margin: 4px 0; font-size: 26px; }
+  .muted { color: var(--muted); }
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+  th { font-size: 13px; font-weight: normal; color: var(--muted); }
+  th:first-child, td:first-child { text-align: left; }
+  #ptable tbody tr { cursor: pointer; }
+  #ptable tbody tr:hover, #ptable tr.sel { background: var(--soft); }
+  .pred { color: var(--main); font-weight: bold; }
+  .badge { font-size: 11px; color: var(--red); border: 1px solid var(--red); border-radius: 4px; padding: 0 4px; margin-left: 4px; }
+  .small { display: block; font-size: 12px; color: var(--muted); }
+  #reveal { border-color: var(--act); color: var(--act); font-weight: bold; }
+  #reveal.on { background: var(--act); color: #fff; }
+  svg { width: 100%; height: auto; display: block; }
+  svg text { fill: var(--muted); font-size: 12px; }
+  .legend span { margin-right: 14px; font-size: 13px; color: var(--muted); }
+  td.good { background: var(--good); }
+  td.bad { background: var(--bad); }
+  .note { font-size: 13px; color: var(--muted); }
+  .note p { margin: 4px 0; }
+  @media (max-width: 560px) { th, td { padding: 6px 4px; font-size: 13px; } h1 { font-size: 22px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>KBO 2026 예측 조회</h1>
+  <p class="sub">2020~2025년 기록에 선수별 직선을 맞춰 2026년을 예측한 결과입니다.</p>
+
+  <div class="tabs row">
+    <button id="tabPlayer" class="on" onclick="showTab('player')">선수 조회</button>
+    <button id="tabRatio" onclick="showTab('ratio')">지표별 비교표</button>
+    <button id="tabLogit" onclick="showTab('logit')">상승/비상승 분류</button>
+    <button id="tabAge" onclick="showTab('age')">연령대 분석</button>
+  </div>
+
+  <!-- 선수 조회 탭 -->
+  <div id="viewPlayer">
+    <div class="card">
+      <div class="row">
+        <div class="search">
+          <input id="q" type="text" autocomplete="off" placeholder="선수 이름 검색 (예: 구자욱)">
+          <ul id="list"></ul>
+        </div>
+        <div id="kindButtons"></div>
+      </div>
+      <h2 id="pname"></h2>
+      <p id="pmeta" class="muted"></p>
+      <div class="row">
+        <span class="muted">전체 평균 기준:</span>
+        <span id="lgButtons"></span>
+        <button id="reveal" onclick="toggleReveal()">2026 실제값 공개</button>
+      </div>
+      <div class="scroll"><table id="ptable"></table></div>
+      <p class="muted" style="font-size:13px">표의 지표를 누르면 아래 그래프가 바뀝니다.</p>
+    </div>
+    <div class="card">
+      <h3 id="ctitle" style="margin-top:0"></h3>
+      <div class="legend" id="legend"></div>
+      <div id="chart"></div>
+    </div>
+  </div>
+
+  <!-- 지표별 비교표 탭 -->
+  <div id="viewRatio" style="display:none">
+    <div class="card">
+      <div class="row" id="groupButtons"></div>
+      <p id="rmeta" class="muted"></p>
+      <p class="muted" style="font-size:14px">각 칸 = 직선 예측의 MSE ÷ 기준 예측의 MSE. 1보다 작으면(초록) 직선이 더 정확했고, 1 이상이면(빨강) 기준 예측이 더 정확했습니다.</p>
+      <div class="scroll"><table id="rtable"></table></div>
+    </div>
+  </div>
+
+  <!-- 상승/비상승 분류 탭 (가설 3) -->
+  <div id="viewLogit" style="display:none">
+    <div class="card">
+      <div class="row" id="logitButtons"></div>
+      <p class="muted" style="font-size:14px">2026 지표가 2025보다 상승할지를 로지스틱 회귀(IRLS)로 분류한 정확도(Accuracy)입니다. 모델 1은 직전 시즌 값만, 모델 2는 직전 시즌 값과 전년 대비 변화량을 씁니다. 기준모델보다 높은 칸은 초록, 같거나 낮은 칸은 빨강입니다.</p>
+      <div class="scroll"><table id="ltable"></table></div>
+    </div>
+  </div>
+
+  <!-- 연령대 분석 탭 (가설 2) -->
+  <div id="viewAge" style="display:none">
+    <div class="card">
+      <div class="row" id="ageGroupButtons"></div>
+      <div class="row" id="ageMetricButtons"></div>
+      <h3 id="ageTitle" style="margin:4px 0"></h3>
+      <p class="muted" style="font-size:14px">다음 해 나이 기준 연령대별, 목표 연도 2011~2026 전체 (두 시즌 모두 타자 100타석·투수 20이닝 이상).</p>
+      <div id="ageBars"></div>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">나이를 넣기 전후 비교 (2016~2026 시즌별 평가 합계)</h3>
+      <p class="muted" style="font-size:14px">회귀: 각 모델의 MSE ÷ 직전 시즌 그대로의 MSE (1 미만이면 직전 시즌보다 좋음, 초록). 분류: 상승/비상승 Accuracy (기준모델보다 높으면 초록). 모델 3만 나이(직전 시즌 나이)를 넣었습니다.</p>
+      <div class="scroll"><table id="ageCompare"></table></div>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">회귀 트리가 찾은 나이 분기점</h3>
+      <p class="muted" style="font-size:14px">나이 하나로 다음 해 변화량을 설명하는 회귀 트리(깊이 2, 잎 최소 40행, 2011~2025 학습)의 구간입니다. 아래 표는 학습 종료 연도를 바꿔 가며 깊이 1 트리가 고른 분기점(그 나이 이하 / 초과)입니다.</p>
+      <div class="scroll"><table id="ageLeaves"></table></div>
+      <div class="scroll"><table id="ageStab" style="margin-top:12px"></table></div>
+    </div>
+  </div>
+
+  <div class="note">
+    <p>예측 방법: 선수별 2020~2025년 값 6개에 직선(numpy.polyfit 1차)을 맞춰 2026 위치의 값을 읽었습니다. 0 미만이 나와도 자르지 않고 "0 미만" 표시만 붙였습니다.</p>
+    <p>대상 선수: 2020~2025년 여섯 시즌 기록이 모두 있고 매년 기준(타자 50 또는 100타석, 투수 20이닝) 이상 출전한 선수.</p>
+    <p>2026 기록은 KBO 공식 홈페이지 2026-11-04 갱신본(총 타석이 2025년의 약 101%)입니다.</p>
+    <p>선수 22~54명, 2026년 한 해 비교라 작은 차이는 우연일 수 있습니다.</p>
+    <p>연령대 분석: 나이를 넣어도 예측 오차와 정확도는 거의 달라지지 않았습니다. 연령대별로는 H·HR이 34세 이후 눈에 띄게 줄지만 대부분 출전 감소 때문입니다. 같은 선수가 여러 연도에 들어가 표본이 독립적이지 않으며, 유의성 검정은 하지 않았습니다.</p>
+    <p>상승/비상승 분류: 상승은 직전 시즌보다 1리라도 큰 경우이며, 같으면 비상승입니다. 학습은 2021→2022 ~ 2024→2025 변화로만 했고, 다수 클래스 기준은 학습 기간의 다수 클래스를 모든 선수에게 고른 것입니다. 선수 22~54명, 2026년 한 해 비교입니다.</p>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script>
+// 이 화면은 계산을 하지 않고 data.js 의 값을 보여주기만 한다.
+var DATA = window.KBO_DATA;
+if (!DATA) {
+  document.querySelector('.wrap').innerHTML = '<p>data.js를 찾지 못했습니다. python 폴더에서 run_all.py를 먼저 실행하세요.</p>';
+}
+
+var METRICS = {
+  AVG:  { label: '타율',          digits: 3 },
+  SLG:  { label: '장타율',        digits: 3 },
+  HRPA: { label: '타석당 홈런',    digits: 4 },
+  H:    { label: '안타',          digits: 1 },
+  HR:   { label: '홈런',          digits: 1 },
+  K9:   { label: '9이닝당 탈삼진', digits: 2 },
+  SO:   { label: '탈삼진',        digits: 1 },
+  BB:   { label: '볼넷',          digits: 1 },
+  IP:   { label: '이닝',          digits: 1 }
+};
+var ORDER = { hit: ['AVG', 'SLG', 'HRPA', 'H', 'HR'], pit: ['K9', 'SO', 'BB', 'IP'] };
+var GROUP_NAME = { hit50: '타자 50타석 이상', hit100: '타자 100타석 이상', pit20: '투수 20이닝 이상' };
+
+// 현재 화면 상태
+var current = null;      // 선택한 선수
+var metric = 'AVG';      // 그래프에 그릴 지표
+var lgGroup = 'hit50';   // 전체 평균 기준 group
+var revealed = false;    // 2026 실제값 공개 여부
+var kindFilter = 'all';  // 전체/타자/투수
+var ratioGroup = 'hit50';
+
+function fmt(v, key) {
+  return v.toFixed(METRICS[key].digits);
+}
+function signed(v, key) {
+  if (v > 0) return '+' + fmt(v, key);
+  return fmt(v, key);
+}
+function findPlayer(id) {
+  for (var i = 0; i < DATA.players.length; i++) {
+    if (DATA.players[i].id === id) return DATA.players[i];
+  }
+  return null;
+}
+
+// ---------- 탭 ----------
+function showTab(name) {
+  document.getElementById('viewPlayer').style.display = (name === 'player') ? 'block' : 'none';
+  document.getElementById('viewRatio').style.display = (name === 'ratio') ? 'block' : 'none';
+  document.getElementById('viewLogit').style.display = (name === 'logit') ? 'block' : 'none';
+  document.getElementById('tabPlayer').className = (name === 'player') ? 'on' : '';
+  document.getElementById('tabRatio').className = (name === 'ratio') ? 'on' : '';
+  document.getElementById('tabLogit').className = (name === 'logit') ? 'on' : '';
+  document.getElementById('viewAge').style.display = (name === 'age') ? 'block' : 'none';
+  document.getElementById('tabAge').className = (name === 'age') ? 'on' : '';
+  if (name === 'ratio') drawRatio();
+  if (name === 'logit') drawLogit();
+  if (name === 'age') drawAge();
+}
+
+// ---------- 검색 ----------
+function drawKindButtons() {
+  var hitCount = 0, pitCount = 0;
+  for (var i = 0; i < DATA.players.length; i++) {
+    if (DATA.players[i].kind === 'hit') hitCount++; else pitCount++;
+  }
+  var items = [['all', '전체 ' + DATA.players.length], ['hit', '타자 ' + hitCount], ['pit', '투수 ' + pitCount]];
+  var html = '';
+  for (var j = 0; j < items.length; j++) {
+    var cls = (items[j][0] === kindFilter) ? 'on' : '';
+    html += '<button class="' + cls + '" onclick="setKind(\'' + items[j][0] + '\')">' + items[j][1] + '</button> ';
+  }
+  document.getElementById('kindButtons').innerHTML = html;
+}
+function setKind(k) {
+  kindFilter = k;
+  drawKindButtons();
+  showList();
+}
+
+function showList() {
+  var input = document.getElementById('q');
+  var text = input.value.trim();
+  if (current && text === current.name) text = '';  // 이미 고른 이름이면 전체 목록
+  var html = '';
+  for (var i = 0; i < DATA.players.length; i++) {
+    var p = DATA.players[i];
+    if (kindFilter !== 'all' && p.kind !== kindFilter) continue;
+    if (text !== '' && p.name.indexOf(text) === -1) continue;
+    var kindName = (p.kind === 'hit') ? '타자' : '투수';
+    html += '<li onmousedown="choosePlayer(\'' + p.id + '\')"><span>' + p.name + '</span><small>' + kindName + ' · ' + (p.team || '') + '</small></li>';
+  }
+  if (html === '') html = '<li class="muted" style="cursor:default">조건에 맞는 선수가 없습니다</li>';
+  var list = document.getElementById('list');
+  list.innerHTML = html;
+  list.style.display = 'block';
+}
+
+document.getElementById('q').addEventListener('focus', showList);
+document.getElementById('q').addEventListener('input', showList);
+document.getElementById('q').addEventListener('blur', function () {
+  document.getElementById('list').style.display = 'none';
+});
+
+function choosePlayer(id) {
+  current = findPlayer(id);
+  lgGroup = current.groups[0];
+  if (ORDER[current.kind].indexOf(metric) === -1) metric = ORDER[current.kind][0];
+  document.getElementById('q').value = current.name;
+  document.getElementById('list').style.display = 'none';
+  document.getElementById('q').blur();
+  drawPlayer();
+}
+
+// ---------- 선수 표 ----------
+function setLeague(g) { lgGroup = g; drawPlayer(); }
+function setMetric(k) { metric = k; drawPlayer(); }
+function toggleReveal() { revealed = !revealed; drawPlayer(); }
+
+function drawPlayer() {
+  var p = current;
+  document.getElementById('pname').textContent = p.name;
+  document.getElementById('pmeta').textContent = (p.team || '') + ' · ' + (p.kind === 'hit' ? '타자' : '투수');
+
+  // 전체 평균 기준 버튼 (선수가 속한 group 중에서)
+  var gh = '';
+  for (var i = 0; i < p.groups.length; i++) {
+    var g = p.groups[i];
+    gh += '<button class="' + (g === lgGroup ? 'on' : '') + '" onclick="setLeague(\'' + g + '\')">' + GROUP_NAME[g] + '</button> ';
+  }
+  document.getElementById('lgButtons').innerHTML = gh;
+
+  var btn = document.getElementById('reveal');
+  btn.textContent = revealed ? '2026 실제값 숨기기' : '2026 실제값 공개';
+  btn.className = revealed ? 'on' : '';
+
+  var league = DATA.groups[lgGroup].league;
+  var html = '<thead><tr><th>지표</th><th>직전 시즌(2025)</th><th>2026 예측</th><th>예측−2025</th>' +
+             '<th>본인 6년 평균</th><th>전체 선수 평균</th><th>2026 실제</th><th>2026 상승 확률<br>(모델 2)</th></tr></thead><tbody>';
+  var keys = ORDER[p.kind];
+  for (var j = 0; j < keys.length; j++) {
+    var k = keys[j];
+    var m = p.m[k];
+    var badge = m.neg ? '<span class="badge">0 미만</span>' : '';
+    var act = '<span class="muted">공개 전</span>';
+    if (revealed) {
+      if (m.act === null) act = '<span class="muted" title="2026 기록 없음 (출전 0 포함)">—</span>';
+      else act = fmt(m.act, k) + '<span class="small">실제−예측 ' + signed(m.actdiff, k) + '</span>';
+    }
+    html += '<tr class="' + (k === metric ? 'sel' : '') + '" onclick="setMetric(\'' + k + '\')">' +
+            '<td>' + METRICS[k].label + ' (' + k + ')</td>' +
+            '<td>' + fmt(m.y[5], k) + '</td>' +
+            '<td class="pred">' + fmt(m.pred, k) + badge + '</td>' +
+            '<td>' + signed(m.diff, k) + '</td>' +
+            '<td>' + fmt(m.own, k) + '</td>' +
+            '<td>' + fmt(league[k], k) + '</td>' +
+            '<td>' + act + '</td>' +
+            '<td>' + upCell(DATA.logistic.p[lgGroup][p.id][k]) + '</td></tr>';
+  }
+  document.getElementById('ptable').innerHTML = html + '</tbody>';
+  drawChart();
+}
+
+// ---------- 그래프 (인라인 SVG) ----------
+function drawChart() {
+  var p = current, k = metric, m = p.m[k];
+  var lg = DATA.groups[lgGroup].league[k];
+  var showAct = revealed && m.act !== null;
+
+  // y축 범위: 그릴 값들의 최소~최대 (축 눈금 위치일 뿐 데이터 계산은 아님)
+  var vals = m.y.concat([m.pred, m.line0, lg]);
+  if (showAct) vals.push(m.act);
+  var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+  var pad = (hi - lo) * 0.15 || 1;
+  lo -= pad; hi += pad;
+
+  var W = 700, H = 360, L = 60, R = 90, T = 20, B = 40;
+  function px(i) { return L + i * (W - L - R) / 6; }               // i = 0..6 (2020..2026)
+  function py(v) { return T + (hi - v) / (hi - lo) * (H - T - B); }
+
+  var s = '<svg viewBox="0 0 ' + W + ' ' + H + '">';
+  // 눈금 5개
+  for (var t = 0; t <= 4; t++) {
+    var v = lo + (hi - lo) * t / 4;
+    s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + py(v) + '" y2="' + py(v) + '" stroke="var(--line)"/>';
+    s += '<text x="' + (L - 6) + '" y="' + (py(v) + 4) + '" text-anchor="end">' + fmt(v, k) + '</text>';
+  }
+  for (var i = 0; i <= 6; i++) {
+    s += '<text x="' + px(i) + '" y="' + (H - 14) + '" text-anchor="middle">' + (2020 + i) + '</text>';
+  }
+  // 전체 평균 가로선
+  s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + py(lg) + '" y2="' + py(lg) + '" stroke="var(--muted)" stroke-dasharray="2 4"/>';
+  s += '<text x="' + (W - R + 6) + '" y="' + (py(lg) + 4) + '">전체 평균</text>';
+  // 직선 2020~2026 (점선)
+  s += '<line x1="' + px(0) + '" y1="' + py(m.line0) + '" x2="' + px(6) + '" y2="' + py(m.pred) + '" stroke="var(--main)" stroke-width="2" stroke-dasharray="6 4"/>';
+  // 실제 2020~2025 점과 선
+  var pts = '';
+  for (var j = 0; j < 6; j++) pts += px(j) + ',' + py(m.y[j]) + ' ';
+  s += '<polyline points="' + pts + '" fill="none" stroke="var(--text)" stroke-width="2"/>';
+  for (var j2 = 0; j2 < 6; j2++) {
+    s += '<circle cx="' + px(j2) + '" cy="' + py(m.y[j2]) + '" r="4" fill="var(--text)"/>';
+  }
+  // 2026 예측 점
+  s += '<circle cx="' + px(6) + '" cy="' + py(m.pred) + '" r="7" fill="var(--main)"/>';
+  s += '<text x="' + (px(6) + 10) + '" y="' + (py(m.pred) + 4) + '" style="fill:var(--main)">예측 ' + fmt(m.pred, k) + '</text>';
+  // 2026 실제 점 (공개 시)
+  if (showAct) {
+    s += '<circle cx="' + px(6) + '" cy="' + py(m.act) + '" r="7" fill="none" stroke="var(--act)" stroke-width="3"/>';
+    s += '<text x="' + (px(6) + 10) + '" y="' + (py(m.act) + 4) + '" style="fill:var(--act)">실제 ' + fmt(m.act, k) + '</text>';
+  }
+  s += '</svg>';
+
+  document.getElementById('chart').innerHTML = s;
+  document.getElementById('ctitle').textContent = p.name + ' · ' + METRICS[k].label + ' (' + k + ')';
+  var lgd = '<span>● 실제 2020~2025</span><span style="color:var(--main)">- - 직선(2026까지)</span>' +
+            '<span style="color:var(--main)">● 2026 예측</span><span>····· 전체 평균</span>';
+  if (revealed) lgd += '<span style="color:var(--act)">○ 2026 실제' + (m.act === null ? ' (기록 없음)' : '') + '</span>';
+  if (revealed && p.vol26 !== null) lgd += '<span>2026 출전 ' + p.vol26.toFixed(p.kind === 'hit' ? 0 : 1) + (p.kind === 'hit' ? '타석' : '이닝') + '</span>';
+  document.getElementById('legend').innerHTML = lgd;
+}
+
+// ---------- 상승/비상승 (가설 3) ----------
+function upCell(u) {
+  var s = (u.p2 * 100).toFixed(1) + '%<span class="small">' + (u.pred2 === 1 ? '상승 예상' : '비상승 예상') + '</span>';
+  if (revealed) {
+    if (u.label === null) s += '<span class="small">실제 기록 없음</span>';
+    else s += '<span class="small">실제 ' + (u.label === 1 ? '상승' : '비상승') + ' · ' + (u.pred2 === u.label ? '맞음' : '틀림') + '</span>';
+  }
+  return s;
+}
+
+var logitGroup = 'hit50';
+function setLogitGroup(g) { logitGroup = g; drawLogit(); }
+
+function accCell(v, base) {
+  return '<td class="' + (v > base ? 'good' : 'bad') + '">' + v.toFixed(3) + '</td>';
+}
+
+function drawLogit() {
+  var bh = '';
+  var names = ['hit50', 'hit100', 'pit20'];
+  for (var i = 0; i < names.length; i++) {
+    bh += '<button class="' + (names[i] === logitGroup ? 'on' : '') + '" onclick="setLogitGroup(\'' + names[i] + '\')">' + GROUP_NAME[names[i]] + '</button>';
+  }
+  document.getElementById('logitButtons').innerHTML = bh;
+
+  var html = '<thead><tr><th>지표</th><th>기준모델(다수 클래스)</th><th>모델 1</th><th>모델 2</th>' +
+             '<th>평가 인원</th><th>2026 상승 비율</th><th>학습 행 / 상승 비율</th></tr></thead><tbody>';
+  var res = DATA.logistic.results;
+  for (var j = 0; j < res.length; j++) {
+    var r = res[j];
+    if (r.group !== logitGroup) continue;
+    var conv = (r.converged_model1 && r.converged_model2) ? '' : ' <span class="badge">수렴 안 됨</span>';
+    html += '<tr><td>' + METRICS[r.metric].label + ' (' + r.metric + ')' + conv + '</td>' +
+            '<td>' + r.acc_baseline.toFixed(3) + '<span class="small">항상 ' + (r.majority_class === 1 ? '상승' : '비상승') + '</span></td>' +
+            accCell(r.acc_model1, r.acc_baseline) + accCell(r.acc_model2, r.acc_baseline) +
+            '<td>' + r.n_test + '명</td>' +
+            '<td>' + (r.up_test * 100).toFixed(1) + '%</td>' +
+            '<td>' + r.n_train + '행 / ' + (r.up_train * 100).toFixed(1) + '%</td></tr>';
+  }
+  document.getElementById('ltable').innerHTML = html + '</tbody>';
+}
+
+// ---------- 연령대 분석 (가설 2) ----------
+var ageGroup = '타자';
+var ageMetric = 'H';
+var AGE_METRICS = { '타자': ['AVG', 'SLG', 'HRPA', 'H', 'HR'], '투수': ['K9', 'SO', 'BB', 'IP'] };
+
+function setAgeGroup(g) { ageGroup = g; ageMetric = AGE_METRICS[g][0]; drawAge(); }
+function setAgeMetric(k) { ageMetric = k; drawAge(); }
+
+// 연령대별 막대 하나 (값은 data.js 그대로, 막대 길이만 그림 좌표로 바꿈)
+function barChart(title, labels, values, digits, refLine) {
+  var W = 320, H = 200, L = 44, R = 10, T = 38, B = 28;
+  var lo = Math.min(0, refLine === null ? 0 : refLine), hi = Math.max(0, refLine === null ? 0 : refLine);
+  for (var i = 0; i < values.length; i++) { lo = Math.min(lo, values[i]); hi = Math.max(hi, values[i]); }
+  if (hi === lo) hi = lo + 1;
+  function py(v) { return T + (hi - v) / (hi - lo) * (H - T - B); }
+  var bw = (W - L - R) / values.length;
+  var s = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="max-width:340px">';
+  s += '<text x="0" y="14" style="fill:var(--text);font-size:13px">' + title + '</text>';
+  s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + py(0) + '" y2="' + py(0) + '" stroke="var(--muted)"/>';
+  for (var j = 0; j < values.length; j++) {
+    var v = values[j], y0 = py(Math.max(v, 0)), h = Math.abs(py(v) - py(0));
+    var col = v >= (refLine === null ? 0 : refLine) ? 'var(--main)' : 'var(--red)';
+    s += '<rect x="' + (L + j * bw + 4) + '" y="' + y0 + '" width="' + (bw - 8) + '" height="' + Math.max(h, 1) + '" fill="' + col + '" opacity=".8"/>';
+    s += '<text x="' + (L + j * bw + bw / 2) + '" y="' + (v >= 0 ? y0 - 3 : y0 + h + 11) + '" text-anchor="middle" style="font-size:10px">' + v.toFixed(digits) + '</text>';
+    s += '<text x="' + (L + j * bw + bw / 2) + '" y="' + (H - 8) + '" text-anchor="middle" style="font-size:10px">' + labels[j] + '</text>';
+  }
+  if (refLine !== null) {
+    s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + py(refLine) + '" y2="' + py(refLine) + '" stroke="var(--act)" stroke-dasharray="4 3"/>';
+    s += '<text x="' + (L - 4) + '" y="' + (py(refLine) + 4) + '" text-anchor="end" style="fill:var(--act)">' + refLine + '</text>';
+  }
+  return s + '</svg>';
+}
+
+function drawAge() {
+  var A = DATA.age;
+  var gb = '', mb = '';
+  var groups = ['타자', '투수'];
+  for (var i = 0; i < groups.length; i++) {
+    gb += '<button class="' + (groups[i] === ageGroup ? 'on' : '') + '" onclick="setAgeGroup(\'' + groups[i] + '\')">' + groups[i] + '</button> ';
+  }
+  var ms = AGE_METRICS[ageGroup];
+  for (var j = 0; j < ms.length; j++) {
+    mb += '<button class="' + (ms[j] === ageMetric ? 'on' : '') + '" onclick="setAgeMetric(\'' + ms[j] + '\')">' + METRICS[ms[j]].label + '</button> ';
+  }
+  document.getElementById('ageGroupButtons').innerHTML = gb;
+  document.getElementById('ageMetricButtons').innerHTML = mb;
+  document.getElementById('ageTitle').textContent = ageGroup + ' · ' + METRICS[ageMetric].label + ' (' + ageMetric + ')';
+
+  // 1) 연령대별 막대
+  var labels = [], chg = [], up = [], dvol = [], ns = [];
+  for (var k = 0; k < A.bands.length; k++) {
+    var b = A.bands[k];
+    if (b.group !== ageGroup || b.metric !== ageMetric) continue;
+    labels.push(b.band); chg.push(b.mean_change); up.push(b.up_rate); dvol.push(b.mean_dvol); ns.push(b.band + ': ' + b.n + '행');
+  }
+  var d = METRICS[ageMetric].digits;
+  document.getElementById('ageBars').innerHTML =
+    '<div style="display:flex;flex-wrap:wrap;gap:12px">' +
+    barChart('평균 변화 (다음 해 − 직전)', labels, chg, d, null) +
+    barChart('상승 비율 (0.5 기준선)', labels, up, 2, 0.5) +
+    barChart('평균 출전 변화 (' + (ageGroup === '타자' ? '타석' : '이닝') + ')', labels, dvol, 1, null) +
+    '</div><p class="muted" style="font-size:13px">' + ns.join(' · ') + '</p>';
+
+  // 2) 나이 넣기 전후 비교표
+  var regModels = ['직선', '연령대별직선', '직선+나이', '연령대평균변화'];
+  var html = '<thead><tr><th>지표</th><th>직선</th><th>연령대별 직선</th><th>직선+나이</th><th>연령대 평균 변화</th>' +
+             '<th>분류 n</th><th>기준</th><th>모델 1</th><th>모델 2</th><th>모델 3(+나이)</th></tr></thead><tbody>';
+  for (var m = 0; m < ms.length; m++) {
+    var met = ms[m];
+    html += '<tr><td>' + METRICS[met].label + ' (' + met + ')</td>';
+    for (var r = 0; r < regModels.length; r++) {
+      for (var q = 0; q < A.reg.length; q++) {
+        var x = A.reg[q];
+        if (x.group === ageGroup && x.metric === met && x.model === regModels[r]) {
+          html += '<td class="' + (x.mse_ratio_vs_last < 1 ? 'good' : 'bad') + '">' + x.mse_ratio_vs_last.toFixed(3) + '</td>';
+        }
+      }
+    }
+    for (var c = 0; c < A.cls.length; c++) {
+      var z = A.cls[c];
+      if (z.group !== ageGroup || z.metric !== met) continue;
+      html += '<td>' + z.n + '</td><td>' + z.acc_base.toFixed(3) + '</td>' +
+              accCell(z['acc_모델1'], z.acc_base) + accCell(z['acc_모델2'], z.acc_base) + accCell(z['acc_모델3_나이'], z.acc_base);
+    }
+    html += '</tr>';
+  }
+  document.getElementById('ageCompare').innerHTML = html + '</tbody>';
+
+  // 3) 회귀 트리 잎 + 안정성
+  var lh = '<thead><tr><th>나이 구간 (' + METRICS[ageMetric].label + ')</th><th>평균 변화</th><th>행 수</th></tr></thead><tbody>';
+  for (var e = 0; e < A.leaves.length; e++) {
+    var lf = A.leaves[e];
+    if (lf.group !== ageGroup || lf.metric !== ageMetric) continue;
+    lh += '<tr><td>' + lf.age_from + '~' + lf.age_to + '세</td><td>' + lf.mean_change.toFixed(d) + '</td><td>' + lf.n + '</td></tr>';
+  }
+  document.getElementById('ageLeaves').innerHTML = lh + '</tbody>';
+
+  var sh = '<thead><tr><th>지표</th><th>깊이 1 분기점 (학습 종료 2014 → 2024)</th></tr></thead><tbody>';
+  for (var f = 0; f < A.stab.length; f++) {
+    var st = A.stab[f];
+    if (st.group !== ageGroup) continue;
+    sh += '<tr><td>' + METRICS[st.metric].label + ' (' + st.metric + ')</td><td style="text-align:left">' + st.cuts_2014_2024 + '</td></tr>';
+  }
+  document.getElementById('ageStab').innerHTML = sh + '</tbody>';
+}
+
+// ---------- 지표별 비교표 ----------
+function setRatioGroup(g) { ratioGroup = g; drawRatio(); }
+
+function ratioCell(v) {
+  return '<td class="' + (v < 1 ? 'good' : 'bad') + '">' + v.toFixed(2) + '</td>';
+}
+
+function drawRatio() {
+  var bh = '';
+  var names = ['hit50', 'hit100', 'pit20'];
+  for (var i = 0; i < names.length; i++) {
+    bh += '<button class="' + (names[i] === ratioGroup ? 'on' : '') + '" onclick="setRatioGroup(\'' + names[i] + '\')">' + GROUP_NAME[names[i]] + '</button>';
+  }
+  document.getElementById('groupButtons').innerHTML = bh;
+
+  var g = DATA.groups[ratioGroup];
+  var why = [];
+  if (g.no26) why.push('2026 기록 없음 ' + g.no26 + '명');
+  if (g.zero26) why.push('2026 출전 0 ' + g.zero26 + '명');
+  document.getElementById('rmeta').textContent = '대상 ' + g.n6 + '명 중 유효 평가 ' + g.n26 + '명으로 비교' +
+    (why.length ? ' (제외 ' + (g.n6 - g.n26) + '명: ' + why.join(', ') + ')' : '') +
+    '. 지표 값이 없는 선수는 그 지표에서만 빠지며, 지표별 인원은 표의 "비교 인원"입니다.';
+
+  var html = '<thead><tr><th>지표</th><th>비교 인원</th><th>직선 ÷ 직전 시즌</th><th>직선 ÷ 본인 평균</th><th>직선 ÷ 전체 평균</th></tr></thead><tbody>';
+  for (var j = 0; j < DATA.ratios.length; j++) {
+    var r = DATA.ratios[j];
+    if (r.g !== ratioGroup) continue;
+    html += '<tr><td>' + METRICS[r.m].label + ' (' + r.m + ')</td><td>' + r.n + '</td>' +
+            ratioCell(r.last) + ratioCell(r.own) + ratioCell(r.lg) + '</tr>';
+  }
+  document.getElementById('rtable').innerHTML = html + '</tbody>';
+}
+
+// ---------- 시작: 구자욱 ----------
+if (DATA) {
+  drawKindButtons();
+  var start = DATA.players[0];
+  for (var s = 0; s < DATA.players.length; s++) {
+    if (DATA.players[s].name === '구자욱') start = DATA.players[s];
+  }
+  choosePlayer(start.id);
+}
+</script>
+</body>
+</html>

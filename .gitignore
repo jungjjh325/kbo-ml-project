@@ -1,0 +1,6 @@
+data/
+output/
+web/data.js
+__pycache__/
+*.pyc
+.playwright-mcp/
