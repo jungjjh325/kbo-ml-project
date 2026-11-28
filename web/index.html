@@ -79,6 +79,7 @@
   .chip { display: inline-block; text-align: center; min-width: 40px; margin: 2px; padding: 2px 4px; border: 1px solid var(--line); border-radius: 5px; font-size: 12px; color: var(--muted); }
   .chip small { display: block; font-size: 10px; }
   .chip.hit { background: var(--good); color: var(--text); border-color: var(--main); }
+  #kindButtons, #lgButtons { display: flex; flex-wrap: wrap; gap: 6px; }
   @media (max-width: 560px) { th, td { padding: 6px 4px; font-size: 13px; } h1 { font-size: 22px; } }
 </style>
 </head>
@@ -215,6 +216,7 @@
     <p>대상 선수: 2020~2025년 여섯 시즌 기록이 모두 있고 매년 기준(타자 50 또는 100타석, 투수 20이닝) 이상 출전한 선수.</p>
     <p>2026 기록은 KBO 공식 홈페이지 2026-11-04 갱신본(총 타석이 2025년의 약 101%)입니다.</p>
     <p>선수 22~54명, 2026년 한 해 비교라 작은 차이는 우연일 수 있습니다.</p>
+    <p>500타석·140이닝 버튼은 2020~2025 6시즌 모두 이 기준 이상인 선수만 보여주는 발표용 필터입니다(타자 3명, 투수 2명). 성능 검증은 100타석·20이닝 집단 전체로 했으며, 이 버튼의 전체 평균·상승 확률은 100타석·20이닝 집단 값 그대로입니다.</p>
     <p>연령대 분석: 나이를 넣어도 예측 오차와 정확도는 거의 달라지지 않았습니다. 연령대별로는 H·HR이 34세 이후 눈에 띄게 줄지만 대부분 출전 감소 때문입니다. 같은 선수가 여러 연도에 들어가 표본이 독립적이지 않으며, 유의성 검정은 하지 않았습니다.</p>
     <p>상승/비상승 분류: 상승은 직전 시즌보다 1리라도 큰 경우이며, 같으면 비상승입니다. 학습은 2021→2022 ~ 2024→2025 변화로만 했고, 다수 클래스 기준은 학습 기간의 다수 클래스를 모든 선수에게 고른 것입니다. 선수 22~54명, 2026년 한 해 비교입니다.</p>
   </div>
@@ -240,7 +242,11 @@ var METRICS = {
   IP:   { label: '이닝',          digits: 1 }
 };
 var ORDER = { hit: ['AVG', 'SLG', 'HRPA', 'H', 'HR'], pit: ['K9', 'SO', 'BB', 'IP'] };
-var GROUP_NAME = { hit50: '타자 50타석 이상', hit100: '타자 100타석 이상', pit20: '투수 20이닝 이상' };
+var GROUP_NAME = { hit50: '타자 50타석 이상', hit100: '타자 100타석 이상', hit500: '타자 500타석 이상',
+                   pit20: '투수 20이닝 이상', pit140: '투수 140이닝 이상' };
+// 발표용 필터 그룹: 6시즌 모두 이 기준 이상인 선수만. 평균·확률은 base 집단(hit100/pit20) 값을 그대로 쓴다.
+var SHOW_GROUPS = ['hit500', 'pit140'];
+function isShowGroup(g) { return SHOW_GROUPS.indexOf(g) !== -1; }
 
 // 현재 화면 상태
 var current = null;      // 선택한 선수
@@ -286,6 +292,10 @@ function drawKindButtons() {
     if (DATA.players[i].kind === 'hit') hitCount++; else pitCount++;
   }
   var items = [['all', '전체 ' + DATA.players.length], ['hit', '타자 ' + hitCount], ['pit', '투수 ' + pitCount]];
+  for (var s = 0; s < SHOW_GROUPS.length; s++) {
+    var sg = SHOW_GROUPS[s];
+    if (DATA.groups[sg]) items.push([sg, GROUP_NAME[sg] + ' ' + DATA.groups[sg].n6]);
+  }
   var html = '';
   for (var j = 0; j < items.length; j++) {
     var cls = (items[j][0] === kindFilter) ? 'on' : '';
@@ -306,7 +316,8 @@ function showList() {
   var html = '';
   for (var i = 0; i < DATA.players.length; i++) {
     var p = DATA.players[i];
-    if (kindFilter !== 'all' && p.kind !== kindFilter) continue;
+    if (isShowGroup(kindFilter)) { if (p.groups.indexOf(kindFilter) === -1) continue; }
+    else if (kindFilter !== 'all' && p.kind !== kindFilter) continue;
     if (text !== '' && p.name.indexOf(text) === -1) continue;
     var kindName = (p.kind === 'hit') ? '타자' : '투수';
     html += '<li onmousedown="choosePlayer(\'' + p.id + '\')"><span>' + p.name + '</span><small>' + kindName + ' · ' + (p.team || '') + '</small></li>';
@@ -334,7 +345,11 @@ function choosePlayer(id) {
 }
 
 // ---------- 선수 표 ----------
-function setLeague(g) { lgGroup = g; drawPlayer(); }
+function setLeague(g) {
+  lgGroup = g;
+  if (isShowGroup(g)) { kindFilter = g; drawKindButtons(); }   // 발표용 버튼은 선수 목록도 그 그룹으로 제한
+  drawPlayer();
+}
 function setMetric(k) { metric = k; drawPlayer(); }
 function toggleReveal() { revealed = !revealed; drawPlayer(); }
 

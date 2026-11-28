@@ -14,6 +14,10 @@ WEB_DIR = os.path.join(HERE, '..', 'web')
 
 YEARS = [2020, 2021, 2022, 2023, 2024, 2025]
 
+# 발표용 선수 필터: 2020~2025 매년 이 기준 이상 뛴 선수만 (학습·검증은 base 집단 전체로 한다)
+# group -> (base 집단, 종류, 최소 출전량)
+SHOW_GROUPS = {'hit500': ('hit100', 'hit', 500), 'pit140': ('pit20', 'pit', 140)}
+
 
 def to_num(v):
     # NaN 은 JSON 에서 null 로 쓰기 위해 None 으로 바꾼다
@@ -70,6 +74,29 @@ def age_data():
             'cls': csv_records('age_logistic_summary.csv'),
             'leaves': csv_records('age_tree_leaves.csv'),
             'stab': csv_records('age_tree_stability.csv')}
+
+
+def add_show_groups(groups, players, logistic, hit, pit):
+    # 발표용 그룹을 groups / 선수 groups 배열 / logistic.p 에 추가한다.
+    # 출전량은 playerID·시즌별 합계(같은 시즌 팀이 둘이면 합산). 2026 출전량은 보지 않는다.
+    # league 와 상승 확률은 2~3명 평균을 새로 내지 않고 base 집단 값을 그대로 쓴다.
+    vol = {'hit': hit.groupby(['playerID', 'season'])['PA'].sum(),
+           'pit': pit.groupby(['playerID', 'season'])['IP'].sum()}
+    for g, (base, kind, minimum) in SHOW_GROUPS.items():
+        ids = []
+        for pid, p in players.items():
+            if p['kind'] != kind:
+                continue
+            least = min(float(vol[kind].get((pid, y), 0)) for y in YEARS)
+            if least >= minimum - 1e-9:
+                if base not in p['groups']:
+                    raise ValueError(p['name'] + ' 가 ' + base + ' 집단에 없습니다 (데이터 오류)')
+                ids.append(pid)
+                p['groups'].append(g)
+        groups[g] = {'n6': len(ids), 'base': base, 'presentation': True, 'members': ids,
+                     'league': dict(groups[base]['league'])}
+        logistic['p'][g] = {pid: logistic['p'][base][pid] for pid in ids}
+        print(g, len(ids), '명:', ', '.join(players[pid]['name'] for pid in ids))
 
 
 def main():
@@ -152,9 +179,12 @@ def main():
                        'last': float(r['ratio_last']), 'own': float(r['ratio_own']),
                        'lg': float(r['ratio_league'])})
 
+    logistic = logistic_data()
+    add_show_groups(groups, players, logistic, hit, pit)
+
     # 타자 먼저, 그다음 이름 순
     player_list = sorted(players.values(), key=sort_key)
-    data = {'groups': groups, 'players': player_list, 'ratios': ratios, 'logistic': logistic_data(), 'age': age_data()}
+    data = {'groups': groups, 'players': player_list, 'ratios': ratios, 'logistic': logistic, 'age': age_data()}
 
     with open(os.path.join(WEB_DIR, 'data.js'), 'w', encoding='utf-8') as f:
         f.write('window.KBO_DATA = ' + json.dumps(data, ensure_ascii=False) + ';\n')
